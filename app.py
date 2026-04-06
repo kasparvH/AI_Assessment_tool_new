@@ -594,13 +594,76 @@ def screen_results():
 
     if inconsistencies:
         st.warning(f"⚠️ **{len(inconsistencies)} document inconsistencies** were flagged during this assessment.")
-        with st.expander("Review inconsistencies"):
-            for inc in inconsistencies:
-                st.markdown(f"**Q{inc.get('question_id')}:** {inc.get('question_text', '')}")
-                st.markdown(f"- Your answer: *{inc.get('selected_answer', '')}*")
-                st.markdown(f"- Document says: *{inc.get('document_evidence', '')}*")
-                st.markdown(f"- Explanation: {inc.get('explanation', '')}")
+        with st.expander("Review inconsistencies & pas antwoorden aan", expanded=True):
+            st.markdown(
+                "Het geüploade document wijkt op onderstaande punten af van jouw antwoorden. "
+                "Je kunt per punt jouw antwoord corrigeren naar de werkelijke situatie."
+            )
+            st.markdown("---")
+
+            # Load full question dataframe (all 265) for answer option lookup
+            df_full = get_questions()
+
+            changed_any = False
+            for idx, inc in enumerate(inconsistencies):
+                qid = inc.get("question_id")
+                sev = inc.get("severity", "medium")
+                sev_color = {"high": "#dc3545", "medium": "#F7941D", "low": "#ffc107"}.get(sev, "#F7941D")
+                sev_nl = {"high": "Hoog", "medium": "Middel", "low": "Laag"}.get(sev, sev)
+
+                st.markdown(f"""
+                <div style="border-left:4px solid {sev_color};padding:4px 12px;margin-bottom:4px;">
+                    <strong>Q{qid} — Ernst: {sev_nl}</strong><br>
+                    {inc.get('question_text', '')}
+                </div>
+                """, unsafe_allow_html=True)
+
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    st.markdown(f"**Jouw antwoord:**")
+                    st.markdown(f"*{inc.get('selected_answer', '')}*")
+                with col_b:
+                    st.markdown(f"**Document stelt:**")
+                    st.markdown(f"*{inc.get('document_evidence', '')}*")
+
+                st.markdown(f"**Toelichting:** {inc.get('explanation', '')}")
+
+                # Show answer options for this question
+                row_match = df_full[df_full.index == qid] if qid in df_full.index else df_full[df_full['Question_id'] == qid] if 'Question_id' in df_full.columns else None
+
+                current_answer = answers.get(qid)
+                already_adjusted = st.session_state.get(f"_adj_confirmed_{qid}", False)
+
+                if already_adjusted:
+                    st.success(f"✅ Antwoord voor Q{qid} is aangepast naar optie {answers.get(qid)}.")
+                else:
+                    if row_match is not None and not row_match.empty:
+                        row = row_match.iloc[0]
+                        opt1 = row.get('Answer_options_1', 'Optie 1')
+                        opt2 = row.get('Answer_options_2', 'Optie 2')
+                        opt3 = row.get('Answer_options_3', 'Optie 3')
+
+                        st.markdown("**Selecteer het juiste antwoord op basis van het document:**")
+                        new_answer = st.radio(
+                            label=f"Aanpassing Q{qid}",
+                            options=[1, 2, 3],
+                            format_func=lambda x, o1=opt1, o2=opt2, o3=opt3: {1: o1, 2: o2, 3: o3}[x],
+                            index=(current_answer - 1) if current_answer in [1, 2, 3] else 0,
+                            key=f"adj_radio_{qid}_{idx}",
+                            label_visibility="collapsed",
+                        )
+
+                        if st.button(f"✅ Bevestig aanpassing Q{qid}", key=f"adj_btn_{qid}_{idx}", use_container_width=False):
+                            on_answer_change(qid, new_answer)
+                            st.session_state[f"_adj_confirmed_{qid}"] = True
+                            changed_any = True
+                            st.rerun()
+
                 st.markdown("---")
+
+            if changed_any:
+                st.success("Antwoorden bijgewerkt. De scores hieronder zijn herberekend.")
+                st.rerun()
 
     st.info("✅ Je assessment is volledig ingevuld en opgeslagen. De Straightable consultant genereert het rapport voor je en stuurt dit toe.")
 
