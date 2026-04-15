@@ -28,6 +28,11 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Admin mode detectie via URL query parameter
+# Toegang via: https://jouwapp.streamlit.app/?admin=true
+query_params = st.query_params
+admin_mode = query_params.get("admin", "") == "true"
+
 # ── Brand CSS ─────────────────────────────────────────────────────────────────
 CUSTOM_CSS = """
 <style>
